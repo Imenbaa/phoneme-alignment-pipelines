@@ -52,12 +52,6 @@ respective providers. Only aggregate metrics and figures are published here.
 ## Repository layout
 
 ```
-alignment_models/     CTC forced alignment + phoneme recognizer training
-  align_viterbi.py      Viterbi forced alignment over CTC posteriors
-  w2vctc_*.py           wav2vec2-CTC training variants (joint, curriculum, transformer)
-  metrics.py            boundary-error / F1 metrics
-  eval_*.py             evaluation entry points
-  VAD_chunk.py          VAD-based chunking for long recordings
 src/
   utils/                analysis + metric computation (core of the paper)
     w2vctc_rhapsodie.ipynb    MAIN notebook: produces every figure and table
@@ -67,32 +61,29 @@ src/
     analyze_phonemes.py       per-phoneme / manner-of-articulation breakdown
     utils_phoneme_reco.py     phoneme recognition inference helpers
     prepare_mfa.py            build MFA corpus dirs + dictionaries
+    VAD_chunk.py, apply_vad.py    VAD-based chunking for long recordings
     rhapsodie.ipynb, wavlm_rhapsodie.ipynb, whisper_rhapsodie.ipynb,
     typaloc.ipynb, monpage.ipynb, w2v_mfa.ipynb   per-corpus / per-model runs
   finetuning/           phoneme recognizer fine-tuning (WavLM, Whisper)
+    train_wavlm.py, train_whisper.py, prep_whisper_dataset.py
   ASR_mfa.ipynb         ASR front-end transcription for the ASR+G2P->MFA baseline
-  vad/, ASR_pyannote/   VAD / diarization front-end experiments
-mfa/
-  global_config.yaml    MFA 3.3.9 configuration used
-  command_history.yaml  every MFA command run, with timings and exit codes
-results/
-  master_metrics.csv       all systems x all conditions
-  summary_by_system1.csv   per-system summary incl. onset/offset bias
-  results.csv              MFA vs. CTC headline comparison
-  figures/                 paper figures
 ```
+
+This repository holds the **transcription and analysis code**. The CTC alignment
+back-end, the MFA configuration, and the aggregate result tables and figures are not
+included here.
 
 ## Reproducing
 
-The pipeline runs in **three separate conda environments** — MFA pins its own
-numpy/scipy and ships Kaldi binaries, so it cannot share an env with the CTC stack.
+The pipeline runs in **separate conda environments** — MFA pins its own numpy/scipy and
+ships Kaldi binaries, so it cannot share an env with the phoneme-recognition stack.
 
 ```bash
-# 1. Phoneme recognition + CTC alignment + analysis  (Python 3.10)
+# 1. Phoneme recognition + analysis  (Python 3.10)
 conda create -n viterbi python=3.10 && conda activate viterbi
 pip install -r requirements.txt
 
-# 2. MFA back-end
+# 2. MFA back-end  (own env; version used for the paper)
 conda create -n mfa_env -c conda-forge montreal-forced-aligner=3.3.9
 
 # 3. Optional: VAD / diarization front-end
@@ -112,22 +103,21 @@ export HF_TOKEN=hf_xxxxxxxxxxxx
 1. **Transcription** — run a phoneme recognizer (`src/utils/utils_phoneme_reco.py`, or the
    per-model notebooks) or word-level ASR (`src/ASR_mfa.ipynb`) to produce phoneme/word
    transcriptions per corpus.
-2. **CTC back-end** — `alignment_models/align_viterbi.py` performs Viterbi forced
-   alignment over the CTC posteriors, writing alignments to `ctc_results/`.
+2. **CTC back-end** — Viterbi forced alignment over the CTC posteriors (e.g.
+   `torchaudio.functional.forced_align`), writing alignments to `ctc_results/`. The
+   encoder emits one frame per 20 ms, which bounds boundary resolution.
 3. **MFA back-end** — `src/utils/prepare_mfa.py` builds the corpus directory and
-   dictionary, then align. The exact invocation used for every condition is recorded in
-   `mfa/command_history.yaml`; the shape is:
+   dictionary, then align with MFA 3.3.9 and the `french_mfa` acoustic model:
    ```bash
    mfa align <corpus_dir> <phoneme_dict.txt> french_mfa <output_dir> \
        --beam 100 --retry_beam 100
    ```
    Results land in `mfa_results*/`.
-4. **Scoring and figures** — open `src/utils/w2vctc_rhapsodie.ipynb`. It loads the
-   alignment dumps from both back-ends, computes the metrics below, and writes every
-   figure in `results/figures/`.
+4. **Scoring** — open `src/utils/w2vctc_rhapsodie.ipynb`. It loads the alignment dumps
+   from both back-ends, computes the metrics below, and renders the figures.
 
-Note that steps 1–3 write into `ctc_results/`, `mfa_results*/` and `data/`, which are
-gitignored: the notebook expects those directories to exist locally.
+Steps 1–3 write into `ctc_results/`, `mfa_results*/` and `data/`, which are gitignored:
+the notebook expects those directories to exist locally.
 
 ## Metrics
 
@@ -148,10 +138,8 @@ reproducibility rather than repackaged as a library. Consequences worth knowing:
   `/vol/corpora/Rhapsodie/wav16k_corrected`) and must be edited for another machine.
 - Exploratory scripts and notebooks sit alongside the ones used for the paper; the
   reported results come from `src/utils/w2vctc_rhapsodie.ipynb`.
-- Four scripts carry pre-existing syntax errors and will not run as-is:
-  `alignment_models/w2vctc_joint_nofxfy.py` (stray character, line 792),
-  `alignment_models/w2vctc_joint.py` (line 765), `alignment_models/untitled.py`, and
-  `src/utils/trackeval_v2.py`. They are committed unmodified.
+- `src/utils/trackeval_v2.py` carries a pre-existing indentation error and will not
+  import as-is; it is committed unmodified. Use `align_metrics.py` instead.
 
 ## Citation
 
