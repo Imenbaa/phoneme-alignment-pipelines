@@ -1,0 +1,1 @@
+python -m eval_rhap --wav_data "/vol/corpora/Rhapsodie/wav16k_corrected" --ref_trans "/vol/corpora/Rhapsodie/TextGrids-fev2013" --log_file 2frhap_sans_hesitation --csv_path 2files_rhap_sans_hesitation.csv

@@ -1,0 +1,10 @@
+# Optional: VAD / diarization front-end (conda env "pyannote_env").
+# Needs a Hugging Face token with access to pyannote gated models:
+#   export HF_TOKEN=hf_xxxxxxxx
+pyannote-audio==4.0.4
+pyannote-core==6.0.1
+pyannote-database==6.1.1
+pyannote-metrics==4.1
+pyannote-pipeline==4.0.0
+whisperx==3.8.6
+praatio==6.2.2

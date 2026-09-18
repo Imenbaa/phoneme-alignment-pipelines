@@ -1,0 +1,59 @@
+# ---- Data & corpora (never commit: clinical / licensed speech) ----
+data/
+corpora/
+*.wav
+*.flac
+*.mp3
+*.TextGrid
+*.etf
+*.trn
+*.lab
+
+# ---- Alignment dumps & intermediate results ----
+*.pkl
+*.npy
+ctc_results/
+mfa_results*/
+mfa_data/
+phoneme_analysis*/
+trn/
+
+# ---- Models & checkpoints ----
+models/
+checkpoint-*/
+model_checkpoints/
+pretrained_models/
+whisper_checkpoints/
+whisper-fr-phoneme*/
+wav2vec2-fr-phoneme/
+wavlm_phase1/
+*.tar.gz
+*.whl
+*.bin
+*.safetensors
+*.pt
+*.ckpt
+
+# ---- Logs & runs ----
+logs/
+runs/
+*.log
+
+# ---- Secrets ----
+.env
+.git-credentials
+*token*.txt
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+*.egg-info/
+
+# ---- Editors / OS ----
+.idea/
+.vscode/
+.DS_Store
+._*

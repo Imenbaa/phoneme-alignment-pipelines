@@ -1,0 +1,31 @@
+# Phoneme recognition + CTC forced alignment, and the analysis notebooks.
+# Versions as used on the LaBRI server (conda env "viterbi", Python 3.10.19).
+# The MFA back-end runs in a SEPARATE env -- see requirements-mfa.txt.
+
+torch==2.1.2
+torchaudio==2.1.2
+transformers==4.38.2
+safetensors==0.7.0
+datasets==4.5.0
+evaluate==0.4.6
+
+numpy==1.26.4
+pandas==2.3.3
+scipy==1.15.3
+scikit-learn==1.7.2
+matplotlib==3.10.8
+
+librosa==0.11.0
+soundfile==0.13.1
+audiofile==1.6.0
+TextGrid==1.6.1
+praatio==6.2.2
+
+jiwer==4.0.0
+Levenshtein==0.27.3
+editdistance==0.8.1
+RapidFuzz==3.14.3
+
+rVADfast==0.0.5
+tqdm==4.67.3
+ipython==8.38.0
