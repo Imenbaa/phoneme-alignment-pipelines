@@ -1,9 +1,0 @@
-# MFA alignment back-end -- install in its OWN conda env, not with requirements.txt.
-# MFA pulls Kaldi binaries and pins its own numpy/scipy, which conflict with the
-# CTC env above.
-#
-#   conda create -n mfa_env -c conda-forge montreal-forced-aligner=3.3.9
-#   conda activate mfa_env
-#
-# Version used for the paper: Montreal Forced Aligner 3.3.9 (Python 3.10.19)
-# Config and the exact commands run are in mfa/.
