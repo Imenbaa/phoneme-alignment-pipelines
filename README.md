@@ -53,33 +53,37 @@ respective providers. Only aggregate metrics and figures are published here.
 
 ```
 src/
-  utils/                analysis + metric computation (core of the paper)
-    w2vctc_rhapsodie.ipynb    MAIN notebook: produces every figure and table
-    metrics.py                F1@20/50ms, AAS, median boundary error, duration error
-    metrics_alignment.py      alignment-specific metrics
-    align_metrics.py          TrackEval-based scoring
-    analyze_phonemes.py       per-phoneme / manner-of-articulation breakdown
-    utils_phoneme_reco.py     phoneme recognition inference helpers
-    prepare_mfa.py            build MFA corpus dirs + dictionaries
-    VAD_chunk.py, apply_vad.py    VAD-based chunking for long recordings
-    rhapsodie.ipynb, wavlm_rhapsodie.ipynb, whisper_rhapsodie.ipynb,
-    typaloc.ipynb, monpage.ipynb, w2v_mfa.ipynb   per-corpus / per-model runs
-  finetuning/           phoneme recognizer fine-tuning (WavLM, Whisper)
+  evaluate_alignment.py   evaluation entry point (CLI) -- see "Reproducing" below
+  utils/
+    ctc_alignment.py        CTC forced alignment / greedy decoding -> phoneme intervals
+    whisper_ctc_model.py    Whisper encoder + CTC head
+    textgrid_io.py          read a phone tier out of a TextGrid
+    phoneme_normalization.py  declarative label -> phoneme normalisation
+    phoneme_mappings.py     optional inventory presets (SAMPA/ASR codes -> IPA)
+    intervals.py            interval helpers (offsets, sequences)
+    corpus.py               pair audio with its annotation by stem
+    alignment_matching.py   Levenshtein matching of reference to hypothesis
+    metrics_alignment.py    F1@20/50ms, AAS, median boundary error, PER
+    export.py               CSV / ETF / pickle dumps
+    VAD_chunk.py            WhisperX-style VAD chunking for long recordings
+    README.md               module map and the protocol in code
+  finetuning/             phoneme recognizer fine-tuning (WavLM, Whisper)
     train_wavlm.py, train_whisper.py, prep_whisper_dataset.py
-  ASR_mfa.ipynb         ASR front-end transcription for the ASR+G2P->MFA baseline
 ```
 
-This repository holds the **transcription and analysis code**. The CTC alignment
-back-end, the MFA configuration, and the aggregate result tables and figures are not
-included here.
+This repository holds the **evaluation and fine-tuning code**. No corpus, checkpoint,
+alignment dump or result table is included. The code is corpus-agnostic: the naming
+scheme, tier names, phoneme inventory and grouping metadata of the data you point it at
+are all command-line arguments, so the evaluation protocol below can be reproduced on any
+corpus with reference phoneme segmentation.
 
 ## Reproducing
 
-The pipeline runs in **separate conda environments** — MFA pins its own numpy/scipy and
+The pipeline runs in **separate conda environments** -- MFA pins its own numpy/scipy and
 ships Kaldi binaries, so it cannot share an env with the phoneme-recognition stack.
 
 ```bash
-# 1. Phoneme recognition + analysis  (Python 3.10)
+# 1. Phoneme recognition + evaluation  (Python 3.10)
 conda create -n viterbi python=3.10 && conda activate viterbi
 pip install -r requirements.txt
 
@@ -91,33 +95,82 @@ conda create -n pyannote_env python=3.10 && conda activate pyannote_env
 pip install -r requirements-vad.txt
 ```
 
-Gated Hugging Face models (pyannote, WhisperX VAD) need a token in the environment —
+Gated Hugging Face models (pyannote, WhisperX VAD) need a token in the environment --
 the code reads `HF_TOKEN` and no credentials are stored in this repository:
 
 ```bash
 export HF_TOKEN=hf_xxxxxxxxxxxx
 ```
 
-### Pipeline steps
+### What the evaluation expects
 
-1. **Transcription** — run a phoneme recognizer (`src/utils/utils_phoneme_reco.py`, or the
-   per-model notebooks) or word-level ASR (`src/ASR_mfa.ipynb`) to produce phoneme/word
-   transcriptions per corpus.
-2. **CTC back-end** — Viterbi forced alignment over the CTC posteriors (e.g.
-   `torchaudio.functional.forced_align`), writing alignments to `ctc_results/`. The
-   encoder emits one frame per 20 ms, which bounds boundary resolution.
-3. **MFA back-end** — `src/utils/prepare_mfa.py` builds the corpus directory and
-   dictionary, then align with MFA 3.3.9 and the `french_mfa` acoustic model:
-   ```bash
-   mfa align <corpus_dir> <phoneme_dict.txt> french_mfa <output_dir> \
-       --beam 100 --retry_beam 100
-   ```
-   Results land in `mfa_results*/`.
-4. **Scoring** — open `src/utils/w2vctc_rhapsodie.ipynb`. It loads the alignment dumps
-   from both back-ends, computes the metrics below, and renders the figures.
+Two directories, paired by filename stem:
 
-Steps 1–3 write into `ctc_results/`, `mfa_results*/` and `data/`, which are gitignored:
-the notebook expects those directories to exist locally.
+```
+audio/        utt001.wav  utt002.wav  ...
+reference/    utt001.TextGrid  utt002.TextGrid  ...   (a tier of phone intervals)
+```
+
+Stems need not match exactly -- `--ref-stem-suffix=-Pro` strips a trailing marker before
+pairing. Optionally, a CSV assigns each file a group (speaking style, speaker group,
+clinical condition), and metrics are then reported per group as well as globally.
+
+### Scoring a CTC back-end
+
+```bash
+python src/evaluate_alignment.py \
+    --audio-dir  data/audio \
+    --ref-dir    data/reference \
+    --ref-tier   phones \
+    --hypothesis ctc \
+    --model-type wav2vec2 \
+    --checkpoint models/wav2vec2-french-phonemizer \
+    --chunking   vad \
+    --out-dir    results/w2v2_ctc --per-phoneme
+```
+
+`--model-type` selects `wav2vec2`, `wavlm` or `whisper`; `--decoder greedy` reads
+boundaries off the argmax best path instead of forced-aligning, and decodes the same
+phoneme string, so PER is unchanged and boundary placement is the only variable.
+
+### Scoring an MFA back-end
+
+MFA is run outside this repository; point the script at its output TextGrids:
+
+```bash
+mfa align <corpus_dir> <phoneme_dict.txt> french_mfa <output_dir> \
+    --beam 100 --retry_beam 100
+
+python src/evaluate_alignment.py \
+    --audio-dir  data/audio \
+    --ref-dir    data/reference --ref-tier phones \
+    --hypothesis textgrid --hyp-dir <output_dir> --hyp-tier phones \
+    --out-dir    results/mfa --per-phoneme
+```
+
+This path imports no torch, so MFA output can be scored without a deep-learning stack.
+
+### Matching label conventions
+
+Reference and hypothesis rarely use the same symbols. `--ref-preset` / `--hyp-preset`
+apply a built-in mapping (`french-sampa`, `french-asr-codes`, `french-broad`), and
+`--ref-mapping` / `--hyp-mapping` take a JSON object `{"label": "phoneme"}` of your own.
+The default is `none`: no mapping is applied unless you ask for one.
+
+Every run writes `inventory_<tag>.txt` comparing the phoneme inventories actually seen on
+each side. **Read it first** -- a small shared inventory means the two sides disagree on
+notation, which silently depresses PER and boundary recall.
+
+### Output
+
+| File | Contents |
+|---|---|
+| `metrics_<tag>.csv` | per-file, per-group and global metrics |
+| `per_phoneme_<tag>.csv` | per-phoneme breakdown (`--per-phoneme`) |
+| `inventory_<tag>.txt` | reference vs. hypothesis inventory comparison |
+| `predictions_<tag>.csv` | the predicted phoneme sequence per file |
+| `alignment_<tag>.pkl` | the full interval store, for re-scoring without re-running |
+| `hyp_<tag>.etf` | hypothesis intervals in ETF form (`--etf`) |
 
 ## Metrics
 
@@ -131,15 +184,16 @@ the notebook expects those directories to exist locally.
 
 ## Status and caveats
 
-This is research code as it ran on the lab server, kept in its original layout for
-reproducibility rather than repackaged as a library. Consequences worth knowing:
-
-- Paths to corpora and outputs are **hardcoded absolute paths** (e.g.
-  `/vol/corpora/Rhapsodie/wav16k_corrected`) and must be edited for another machine.
-- Exploratory scripts and notebooks sit alongside the ones used for the paper; the
-  reported results come from `src/utils/w2vctc_rhapsodie.ipynb`.
-- `src/utils/trackeval_v2.py` carries a pre-existing indentation error and will not
-  import as-is; it is committed unmodified. Use `align_metrics.py` instead.
+- The evaluation code is corpus-agnostic, but it was written for and validated on the
+  three French corpora above. Nothing stops it running elsewhere; nothing guarantees the
+  built-in label presets fit another language.
+- Boundary resolution is bounded by the encoder frame rate: one frame per 20 ms. Errors
+  below that are not measurable by this protocol.
+- `--chunking vad` needs `whisperx` and a gated Hugging Face model. The default
+  (`none`, whole file) and `fixed` need neither.
+- Reference offsets: some annotation carries session-level timestamps that run past the
+  audio file. `--ref-offset auto` (the default) re-anchors only when the reference ends
+  more than `--ref-offset-tolerance` seconds beyond the audio.
 
 ## Citation
 
