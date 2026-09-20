@@ -211,7 +211,7 @@ Paper under review at SLT 2026. Citation details will be added on acceptance.
 @inproceedings{phoneme_alignment_slt2026,
   title     = {Comparing Phoneme Alignment Pipelines Across Spontaneous and
                Pathological French Speech},
-  author    = {TODO},
+  author    = {Imen Ben-Amor, Jean-Luc Rouas, Charles Brazier},
   booktitle = {IEEE Spoken Language Technology Workshop (SLT)},
   year      = {2026}
 }
