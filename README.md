@@ -195,6 +195,14 @@ notation, which silently depresses PER and boundary recall.
   audio file. `--ref-offset auto` (the default) re-anchors only when the reference ends
   more than `--ref-offset-tolerance` seconds beyond the audio.
 
+## Acknowledgements
+
+The evaluation code in `src/` was refactored with the help of Claude AI: the research
+notebooks and helper scripts used for the paper were extracted into the dataset-independent
+modules and command-line entry point documented above, so the evaluation protocol can be
+reproduced without the private corpora. The experiments, results and analysis are the
+authors' own.
+
 ## Citation
 
 Paper under review at SLT 2026. Citation details will be added on acceptance.
