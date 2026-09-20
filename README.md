@@ -200,7 +200,7 @@ notation, which silently depresses PER and boundary recall.
 The evaluation code in `src/` was refactored with the help of Claude AI: the research
 notebooks and helper scripts used for the paper were extracted into the dataset-independent
 modules and command-line entry point documented above, so the evaluation protocol can be
-reproduced without the private corpora. The experiments, results and analysis are the
+reproduced without the private corpora. The experiments, protocol, technical choices, results and analysis are the
 authors' own.
 
 ## Citation
