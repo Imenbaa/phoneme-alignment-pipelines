@@ -10,11 +10,6 @@ Expects two CSVs (train + dev) with at least:
 By default the phoneme vocab is BUILT from the train `phonemes` column, so it
 always matches the data. Pass --vocab_file only if you need a fixed external
 vocab (e.g. shared across corpora); then it's used as-is.
-
-Still required ON THE SERVER:
-  * WavLM weights, copied locally -> pass via --model_path
-  * pip deps: torch torchaudio transformers datasets jiwer soundfile librosa accelerate tensorboard
-  * mp3 decoding needs a recent libsndfile (>=1.1) or ffmpeg available.
 """
 
 import os
@@ -44,17 +39,17 @@ from transformers import (
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--train_csv", default="/vol/experiments3/imbenamor/TAPAS-FRAIS/data/commonvoice_fr_wavlm_train.csv")
-    p.add_argument("--eval_csv", default="/vol/experiments3/imbenamor/TAPAS-FRAIS/data/commonvoice_fr_wavlm_dev.csv")
-    p.add_argument("--clips_dir", default="/vol/corpora/CommonVoice/cv-corpus-19.0-2024-09-13/fr/clips")
-    p.add_argument("--vocab_file", default="/vol/experiments3/imbenamor/TAPAS-FRAIS/data/vocab_CV.json",
+    p.add_argument("--train_csv", default="")
+    p.add_argument("--eval_csv", default="")
+    p.add_argument("--clips_dir", default="")
+    p.add_argument("--vocab_file", default="",
                    help="OPTIONAL fixed vocab JSON; if omitted, vocab is built from the phonemes column")
     p.add_argument("--path_column", default="path")
     p.add_argument("--phonemes_column", default="phonemes")
 
-    p.add_argument("--model_path", default="/vol/experiments3/imbenamor/TAPAS-FRAIS/models/wavlm-large",
+    p.add_argument("--model_path", default="../models/wavlm-large",
                    help="local directory with WavLM weights")
-    p.add_argument("--output_dir", default="/vol/experiments3/imbenamor/TAPAS-FRAIS/src/finetuning/wavlm-fr-phoneme-large")
+    p.add_argument("--output_dir", default="/finetuning/wavlm-fr-phoneme-large")
 
     p.add_argument("--num_train_epochs", type=float, default=15.0)
     p.add_argument("--per_device_train_batch_size", type=int, default=8)
