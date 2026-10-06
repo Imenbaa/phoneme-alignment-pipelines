@@ -1,30 +1,29 @@
 """
-Phoneme-alignment metrics: corrected and extended.
+Phoneme-alignment metrics, scored exactly as in the paper.
 
-Key fixes vs. the original:
-  1. match_alignments_lev returned 5 values but the caller unpacked 4 -> crash. Fixed.
-  2. duration_errors was computed but never reported. Now reported.
-  3. Group aggregation took the mean-of-per-file-means and the median-of-per-file-
-     medians. That is statistically wrong (unweighted, and median-of-medians is
-     meaningless). All group stats are now POOLED over every phoneme in the group
-     (micro-average), which is also what makes P90 / gross-error rate well-defined.
-  4. editops now runs on a shared char-encoding of the token vocab, so multi-char
-     phoneme tokens (IPA strings) are compared correctly.
-  5. Boundary F1 now follows the paper definition exactly:
-       - the boundary set is every phone onset together with the final offset,
-         deduplicated, so boundaries are compared by time alone;
-       - each REFERENCE boundary is matched to the NEAREST unused hypothesis
-         boundary within the tolerance (one-to-one);
-       - TP/FP/FN are pooled over all utterances before P, R and F1.
-     Previously the matching was hypothesis-anchored and took the first
-     candidate within tolerance rather than the nearest, and the final offset
-     was omitted from the boundary set.
+The definitions below reproduce the paper's tables (the `analyse_pkl` scorer
+behind the boundary-error and F1 heatmaps):
 
-Added metrics (agreed for the paper):
-  - Signed mean shift (start, end): direction of bias, not just magnitude.
-  - P90 of boundary error: the tail the median hides.
-  - Gross-error rate %>50 ms: the "MFA breaks" headline number.
-  - Mean/median duration error: needed for the min-duration over-extension story.
+  - Pairing: Levenshtein (unit-cost) alignment of the reference and hypothesis
+    phoneme sequences, with a fixed backtrace order (match/substitution, then
+    deletion, then insertion). Only pairs with identical labels contribute a
+    boundary error. The backtrace order matters: two minimal alignments can pair
+    different phones, so a different aligner gives slightly different numbers.
+  - PER: (S + D + I) / N_ref from that same alignment, pooled over files.
+  - Boundary F1: the boundary set is every phone onset plus the final offset,
+    deduplicated. Each REFERENCE boundary takes the NEAREST unused hypothesis
+    boundary within the tolerance (one-to-one); TP/FP/FN are pooled over files
+    before P, R and F1.
+  - AAS / MedianBE: mean / median of the pooled |onset| and |offset| errors of
+    correctly-recognised phones, after dropping errors above `cap_ms` (150 ms
+    by default) -- larger errors are pairing artifacts, not boundary placement.
+  - onset_bias / offset_bias: signed mean onset / offset error (+ = hypothesis
+    late), uncapped.
+
+All group stats are POOLED over every phoneme in the group (micro-average).
+
+Diagnostics beyond the paper (uncapped, so the tail stays visible): P90,
+%>50ms, %>100ms, %within20ms, medians/means per side, duration error.
 
 Reference point: start/end timestamps are assumed to be in SECONDS on input;
 all reported errors are in milliseconds.
@@ -32,58 +31,61 @@ all reported errors are in milliseconds.
 
 import numpy as np
 import pandas as pd
-import Levenshtein
-from jiwer import process_words
+
+#: Boundary errors above this (ms) are dropped from AAS and MedianBE, as in the paper.
+DEFAULT_CAP_MS = 150.0
 
 
 # ----------------------------------------------------------------------
-# Sequence alignment (Levenshtein), robust to multi-char phoneme tokens
+# Sequence alignment (Levenshtein, unit costs)
 # ----------------------------------------------------------------------
-def _editops(ref, hyp):
-    """editops on a shared char-encoding so IPA tokens of any length work."""
-    vocab = {}
-
-    def enc(seq):
-        out = []
-        for t in seq:
-            if t not in vocab:
-                vocab[t] = chr(0xE000 + len(vocab))  # private-use code points
-            out.append(vocab[t])
-        return "".join(out)
-
-    return Levenshtein.editops(enc(ref), enc(hyp))
-
-
 def align_sequences(ref, hyp):
     """Return list of (ref_idx, hyp_idx); None on either side = del/ins."""
-    alignment = []
-    ops = _editops(ref, hyp)
-    ref_idx = hyp_idx = op_idx = 0
+    n, m = len(ref), len(hyp)
+    D = np.zeros((n + 1, m + 1))
+    D[:, 0] = np.arange(n + 1)
+    D[0, :] = np.arange(m + 1)
+    hyp_a = np.array(hyp, dtype=object)
+    for i in range(1, n + 1):
+        sub = D[i - 1, :-1] + (hyp_a != ref[i - 1]) if m else D[i - 1, :-1]
+        row, prev = D[i], D[i - 1]
+        row[0] = i
+        for j in range(1, m + 1):
+            row[j] = min(sub[j - 1], prev[j] + 1, row[j - 1] + 1)
 
-    while ref_idx < len(ref) or hyp_idx < len(hyp):
-        if op_idx < len(ops):
-            op_type, src_pos, dest_pos = ops[op_idx]
-            if op_type == "delete" and src_pos == ref_idx:
-                alignment.append((ref_idx, None)); ref_idx += 1; op_idx += 1; continue
-            elif op_type == "insert" and dest_pos == hyp_idx:
-                alignment.append((None, hyp_idx)); hyp_idx += 1; op_idx += 1; continue
-            elif op_type == "replace" and src_pos == ref_idx and dest_pos == hyp_idx:
-                alignment.append((ref_idx, hyp_idx)); ref_idx += 1; hyp_idx += 1; op_idx += 1; continue
-        if ref_idx < len(ref) and hyp_idx < len(hyp):
-            alignment.append((ref_idx, hyp_idx)); ref_idx += 1; hyp_idx += 1
-        elif ref_idx < len(ref):
-            alignment.append((ref_idx, None)); ref_idx += 1
-        elif hyp_idx < len(hyp):
-            alignment.append((None, hyp_idx)); hyp_idx += 1
-    return alignment
+    i, j, alignment = n, m, []
+    while i > 0 or j > 0:
+        if i > 0 and j > 0 and D[i, j] == D[i - 1, j - 1] + (ref[i - 1] != hyp[j - 1]):
+            alignment.append((i - 1, j - 1)); i -= 1; j -= 1
+        elif i > 0 and D[i, j] == D[i - 1, j] + 1:
+            alignment.append((i - 1, None)); i -= 1
+        else:
+            alignment.append((None, j - 1)); j -= 1
+    return alignment[::-1]
+
+
+def edit_counts(ref, hyp, alignment=None):
+    """(substitutions, deletions, insertions) along the alignment."""
+    if alignment is None:
+        alignment = align_sequences(ref, hyp)
+    S = D = I = 0
+    for ref_idx, hyp_idx in alignment:
+        if hyp_idx is None:
+            D += 1
+        elif ref_idx is None:
+            I += 1
+        elif ref[ref_idx] != hyp[hyp_idx]:
+            S += 1
+    return S, D, I
 
 
 # ----------------------------------------------------------------------
 # Per-phoneme errors (only phoneme-matched pairs contribute boundary error)
 # ----------------------------------------------------------------------
-def per_phoneme_errors(ref_alignments, hyp_alignments, ref_seq, hyp_seq):
+def per_phoneme_errors(ref_alignments, hyp_alignments, ref_seq, hyp_seq, alignment=None):
     """One record per correctly-matched phoneme. Times in seconds in -> ms out."""
-    alignment = align_sequences(ref_seq, hyp_seq)
+    if alignment is None:
+        alignment = align_sequences(ref_seq, hyp_seq)
     records = []
     for ref_idx, hyp_idx in alignment:
         if ref_idx is None or hyp_idx is None:
@@ -109,12 +111,9 @@ def per_phoneme_errors(ref_alignments, hyp_alignments, ref_seq, hyp_seq):
 # ----------------------------------------------------------------------
 # Boundary-detection F1 (time-only, label-agnostic).
 #
-# Boundary set: every phone onset together with the final offset.
-#   Taking all starts AND all ends then deduplicating is equivalent to
-#   "starts + last end" under a contiguous segmentation (phone n's end IS
-#   phone n+1's start), but stays correct when a pause leaves a gap between
-#   consecutive intervals, where "starts + last end" would silently drop the
-#   offset preceding the gap.
+# Boundary set: every phone onset together with the final offset, as in the
+#   paper. Offsets before a pause are not counted, so a hypothesis that leaves
+#   inter-phoneme gaps (span ends) is scored on its onsets, like a contiguous one.
 #
 # Matching: each REFERENCE boundary takes the NEAREST unused hypothesis
 #   boundary within the tolerance, one-to-one.
@@ -125,7 +124,9 @@ def per_phoneme_errors(ref_alignments, hyp_alignments, ref_seq, hyp_seq):
 # tolerance is in SECONDS.
 # ----------------------------------------------------------------------
 def boundary_times(intervals):
-    b = [iv["start"] for iv in intervals] + [iv["end"] for iv in intervals]
+    b = [iv["start"] for iv in intervals]
+    if intervals:
+        b.append(intervals[-1]["end"])
     return sorted(set(b))
 
 
@@ -157,16 +158,19 @@ def _f1(tp, fp, fn):
 # ----------------------------------------------------------------------
 # Pooled boundary statistics over a set of per-phoneme records (ms).
 # ----------------------------------------------------------------------
-def boundary_stats(df):
+def boundary_stats(df, cap_ms=DEFAULT_CAP_MS):
     if len(df) == 0:
         return {}
     s, e, d = df["start_err"], df["end_err"], df["dur_err"]
     both = pd.concat([s, e])  # AAS / tail pool start AND end boundaries
+    capped = both[both <= cap_ms] if cap_ms is not None else both
     return {
         "K":                      int(len(df)),
-        # --- central ---
-        "AAS (ms)":               both.mean(),               # mean |error| over all boundaries
-        "MedianBE (ms)":          both.median(),             # median |error| over all boundaries
+        # --- central (paper definitions: pooled, capped) ---
+        "AAS (ms)":               capped.mean(),             # mean |error| over all boundaries
+        "MedianBE (ms)":          capped.median(),           # median |error| over all boundaries
+        "onset_bias (ms)":        df["signed_start"].mean(), # + = hyp late
+        "offset_bias (ms)":       df["signed_end"].mean(),
         "Median_start (ms)":      s.median(),
         "Mean_start (ms)":        s.mean(),
         "Median_end (ms)":        e.median(),
@@ -176,9 +180,6 @@ def boundary_stats(df):
         "%>50ms":                 (both > 50).mean() * 100,  # gross-error rate, headline
         "%>100ms":                (both > 100).mean() * 100,
         "%within20ms":            (both <= 20).mean() * 100,
-        # --- direction of bias ---
-        "SignedMean_start (ms)":  df["signed_start"].mean(), # + = hyp late
-        "SignedMean_end (ms)":    df["signed_end"].mean(),
         # --- duration (min-duration over-extension) ---
         "Mean_dur (ms)":          d.mean(),
         "Median_dur (ms)":        d.median(),
@@ -190,13 +191,14 @@ def boundary_stats(df):
 # Main entry point
 # ----------------------------------------------------------------------
 def compute_metrics(alignment_store, csv_path, per_phoneme_csv=None,
-                    f1_tolerances=(0.02, 0.05)):
+                    f1_tolerances=(0.02, 0.05), cap_ms=DEFAULT_CAP_MS):
     """
     alignment_store: {file_id: {ref_intervals, hyp_intervals, ref_seq, hyp_seq, style}}
         *_intervals: list of {"start": sec, "end": sec}
         *_seq:       list of phoneme tokens
     Writes a file/style/global metrics CSV, and optionally a per-phoneme CSV.
     All boundary stats are pooled (micro-averaged) within each group.
+    cap_ms: drop boundary errors above this from AAS / MedianBE (None = keep all).
     """
     all_records = []   # long-form: one row per matched phoneme, tagged with file+style
     f1_rows = []       # per-file F1 counts + PER, pooled later
@@ -207,7 +209,8 @@ def compute_metrics(alignment_store, csv_path, per_phoneme_csv=None,
         ref_seq, hyp_seq = data["ref_seq"], data["hyp_seq"]
         style = data.get("style", "ALL")
 
-        recs = per_phoneme_errors(ref_intervals, hyp_intervals, ref_seq, hyp_seq)
+        alignment = align_sequences(ref_seq, hyp_seq)
+        recs = per_phoneme_errors(ref_intervals, hyp_intervals, ref_seq, hyp_seq, alignment)
         for r in recs:
             r["file"] = f; r["style"] = style
         all_records.extend(recs)
@@ -222,8 +225,7 @@ def compute_metrics(alignment_store, csv_path, per_phoneme_csv=None,
             tag = f"{int(round(tol * 1000))}"
             row[f"TP_{tag}"], row[f"FP_{tag}"], row[f"FN_{tag}"] = tp, fp, fn
 
-        out = process_words(" ".join(ref_seq), " ".join(hyp_seq))
-        row["S"], row["D"], row["I"] = out.substitutions, out.deletions, out.insertions
+        row["S"], row["D"], row["I"] = edit_counts(ref_seq, hyp_seq, alignment)
         f1_rows.append(row)
 
     records_df = pd.DataFrame(all_records)
@@ -232,7 +234,7 @@ def compute_metrics(alignment_store, csv_path, per_phoneme_csv=None,
 
     def assemble(rec_subset, f1_subset, label, style_val):
         out = {"group": label, "style": style_val}
-        out.update(boundary_stats(rec_subset))
+        out.update(boundary_stats(rec_subset, cap_ms))
         out["N_ref"] = int(f1_subset["N_ref"].sum())
         out["N_hyp"] = int(f1_subset["N_hyp"].sum())
         out["B_ref"] = int(f1_subset["B_ref"].sum())
@@ -269,7 +271,7 @@ def compute_metrics(alignment_store, csv_path, per_phoneme_csv=None,
     if per_phoneme_csv is not None and len(records_df):
         ph_rows = []
         for ph, sub in records_df.groupby("phoneme"):
-            r = {"phoneme": ph}; r.update(boundary_stats(sub)); ph_rows.append(r)
+            r = {"phoneme": ph}; r.update(boundary_stats(sub, cap_ms)); ph_rows.append(r)
         pd.DataFrame(ph_rows).sort_values("AAS (ms)", ascending=False)\
             .to_csv(per_phoneme_csv, index=False)
 

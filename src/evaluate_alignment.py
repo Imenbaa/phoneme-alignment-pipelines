@@ -179,7 +179,10 @@ def align_with_ctc(bundle, audio_path, chunker, decoder, end_mode, verbose=False
             bundle["model"], audio_path, processor=bundle["processor"], **kwargs
         )
     if bundle["type"] == "wavlm":
-        kwargs["min_samples"] = MIN_CHUNK_SAMPLES
+        # As in the paper: frame duration = chunk duration / frame count, with
+        # no padding and no frame trimming.
+        kwargs["frame_stride_s"] = None
+        kwargs["trim_padding_frames"] = False
     return ctc_align_audio(
         bundle["model"],
         audio_path,
@@ -313,6 +316,9 @@ def build_parser():
     out.add_argument("--tag", default=None, help="suffix for the output filenames")
     out.add_argument("--f1-tolerance", type=float, nargs="+", default=[0.02, 0.05],
                      help="boundary F1 tolerances in seconds (default: 0.02 0.05)")
+    out.add_argument("--be-cap-ms", type=float, default=150.0,
+                     help="drop boundary errors above this (ms) from AAS and MedianBE, "
+                          "as in the paper; 0 keeps every error")
     out.add_argument("--per-phoneme", action="store_true",
                      help="also write the per-phoneme breakdown")
     out.add_argument("--etf", action="store_true",
@@ -488,6 +494,7 @@ def main(argv=None):
         str(metrics_path),
         per_phoneme_csv=str(per_phoneme_path) if per_phoneme_path else None,
         f1_tolerances=tuple(args.f1_tolerance),
+        cap_ms=args.be_cap_ms or None,
     )
 
     written = [pkl_path, inventory_path, predictions_path, metrics_path]

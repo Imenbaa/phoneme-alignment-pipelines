@@ -22,7 +22,6 @@ TextGrid==1.6.1
 praatio==6.2.2
 
 jiwer==4.0.0
-Levenshtein==0.27.3
 editdistance==0.8.1
 RapidFuzz==3.14.3
 

@@ -334,10 +334,26 @@ def _resolve_io(processor, feature_extractor, tokenizer):
 # Presets for the encoders used in the benchmark
 # ---------------------------------------------------------------------------
 def align_wav2vec2_ctc(model, processor, audio_path, **kwargs):
-    """wav2vec 2.0 / WavLM / HuBERT + CTC head, forced alignment, true spans."""
+    """wav2vec 2.0 / HuBERT + CTC head, forced alignment, true spans."""
     kwargs.setdefault("min_samples", MIN_CHUNK_SAMPLES)
     kwargs.setdefault("end_mode", "span")
     return ctc_align_audio(model, audio_path, processor=processor, **kwargs)
+
+
+def align_wavlm_ctc(model, feature_extractor, tokenizer, audio_path, **kwargs):
+    """WavLM + CTC head, forced alignment, true spans. As in the paper, the frame
+    duration is the chunk duration divided by the frame count, with no padding
+    and no frame trimming."""
+    kwargs.setdefault("end_mode", "span")
+    kwargs.setdefault("frame_stride_s", None)
+    kwargs.setdefault("trim_padding_frames", False)
+    return ctc_align_audio(
+        model,
+        audio_path,
+        feature_extractor=feature_extractor,
+        tokenizer=tokenizer,
+        **kwargs,
+    )
 
 
 def align_whisper_encoder_ctc(

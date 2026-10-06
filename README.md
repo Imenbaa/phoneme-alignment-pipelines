@@ -137,6 +137,10 @@ it with its own frame run, leaving inter-phoneme silence unassigned; `contiguous
 where the next phoneme starts. Offset-based metrics (MedianBE, AAS, offset_bias) depend on
 this choice, so compare systems only under the same mode.
 
+To reproduce the paper's CTC numbers, use `--chunking vad` with `--chunk-seconds 30` for
+`wav2vec2` and `wavlm`, and `--chunk-seconds 8` for `whisper`, keeping the default
+`--decoder forced_align` and `--end-mode span`.
+
 ### Scoring an MFA back-end
 
 MFA is run outside this repository; point the script at its output TextGrids:
@@ -178,13 +182,19 @@ notation, which silently depresses PER and boundary recall.
 
 ## Metrics
 
-- **F1@20ms / F1@50ms** — boundary detection F1 at 20 ms and 50 ms tolerance
-- **MedianBE** — median boundary error (ms)
-- **%>50ms** — proportion of boundaries off by more than 50 ms
-- **AAS** — average absolute shift (ms)
-- **DurErr** — phoneme duration error (ms)
-- **onset_bias / offset_bias** — signed boundary bias (ms)
+All metrics are pooled over every file in a group. Boundary errors are measured only on
+phones whose labels match after a Levenshtein alignment of the two phoneme sequences.
+
+- **F1@20ms / F1@50ms** — boundary detection F1 at 20 ms and 50 ms tolerance. The
+  boundary set is every phone onset plus the final offset.
+- **MedianBE** — median absolute boundary error (ms), pooling onsets and offsets
+- **AAS** — average absolute shift (ms), same pool
+- **onset_bias / offset_bias** — signed mean onset / offset error (ms; positive = late)
 - **PER** — phoneme error rate of the transcription front-end (%)
+
+MedianBE and AAS drop errors above 150 ms, which come from mispaired phones rather than
+boundary placement (`--be-cap-ms`, 0 to keep every error). The diagnostic columns
+(%>50ms, P90, duration error) are uncapped.
 
 ## Status and caveats
 
