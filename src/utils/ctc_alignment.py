@@ -343,9 +343,10 @@ def align_wav2vec2_ctc(model, processor, audio_path, **kwargs):
 def align_whisper_encoder_ctc(
     model, feature_extractor, tokenizer, audio_path, **kwargs
 ):
-    """Whisper encoder + CTC head. The encoder always emits 1500 frames, so the
-    padding frames are trimmed back to the real audio length before alignment."""
-    kwargs.setdefault("end_mode", "contiguous")
+    """Whisper encoder + CTC head, forced alignment, true spans. The encoder
+    always emits 1500 frames, so the padding frames are trimmed back to the real
+    audio length before alignment."""
+    kwargs.setdefault("end_mode", "span")
     return ctc_align_audio(
         model,
         audio_path,
