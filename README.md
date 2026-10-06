@@ -132,6 +132,10 @@ python src/evaluate_alignment.py \
 `--model-type` selects `wav2vec2`, `wavlm` or `whisper`; `--decoder greedy` reads
 boundaries off the argmax best path instead of forced-aligning, and decodes the same
 phoneme string, so PER is unchanged and boundary placement is the only variable.
+`--end-mode` sets where a phoneme ends: `span` (the default, for all three encoders) ends
+it with its own frame run, leaving inter-phoneme silence unassigned; `contiguous` ends it
+where the next phoneme starts. Offset-based metrics (MedianBE, AAS, offset_bias) depend on
+this choice, so compare systems only under the same mode.
 
 ### Scoring an MFA back-end
 
