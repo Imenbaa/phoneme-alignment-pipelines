@@ -20,12 +20,12 @@ concatenates the train chunks back into one dataset.
 
 Example:
     python prep_whisper_dataset.py \
-        --train_csv /vol/.../commonvoice_fr_wavlm.csv \
-        --eval_csv  /vol/.../commonvoice_fr_wavlm_dev.csv \
-        --clips_dir /vol/corpora/CommonVoice/cv-corpus-19.0-2024-09-13/fr/clips \
-        --vocab_file /vol/.../vocab_CV.json \
-        --model_path /vol/.../whisper-large-v3 \
-        --output_dir /vol/experiments/cache_imbenamor/whisper_prepared \
+        --train_csv  data/train.csv \
+        --eval_csv   data/dev.csv \
+        --clips_dir  data/clips \
+        --vocab_file data/vocab.json \
+        --model_path models/whisper-large-v3 \
+        --output_dir cache/whisper_prepared \
         --chunk_size 50000
 """
 

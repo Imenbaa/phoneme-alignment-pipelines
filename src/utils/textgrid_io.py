@@ -5,7 +5,9 @@ so the same reader works for MFA output ("phones"), manually corrected tiers, or
 any other naming convention:
 
     tier="phones"          exact tier name
-    contains="corr"        first tier whose name contains this (case-insensitive)
+    contains="phon"        first tier whose name contains this (case-insensitive);
+                           with `index` too, that tier is the fallback when no
+                           name matches
     index=0                positional
     (nothing given)        first tier matching DEFAULT_TIER_NAMES, else tier 0
 
@@ -35,7 +37,8 @@ def select_tier_name(tier_names, tier=None, contains=None, index=None):
         for name in tier_names:
             if needle in name.lower():
                 return name
-        raise KeyError(f"no tier name contains {contains!r}; have {tier_names}")
+        if index is None:
+            raise KeyError(f"no tier name contains {contains!r}; have {tier_names}")
 
     if index is not None:
         return tier_names[index]

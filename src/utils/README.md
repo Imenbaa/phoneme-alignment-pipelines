@@ -10,13 +10,14 @@ argument with a neutral default.
 | `audio_io.py` | `load_audio_mono`, `audio_duration` |
 | `phoneme_mappings.py` | Optional inventory presets (SAMPA→IPA, ASR codes→IPA, nasal canonicalisation, narrow→broad projection). Nothing is applied implicitly. |
 | `phoneme_normalization.py` | `PhonemeNormalizer` (declarative label→phoneme rules), `clean_alignment_dict`, `normalize_phoneme_sequence`, `french_ipa_normalizer` as a worked example |
+| `paper_normalization.py` | `PaperFrenchNormalizer` — the paper's three French normalisers (SAMPA references, ASR-code references, recognizer IPA), ported rule for rule; behind the `french-*` CLI presets |
 | `textgrid_io.py` | `read_phone_intervals`, `extract_phones_from_textgrid`, `select_tier_name`, `list_tier_names` |
 | `intervals.py` | `extract_phoneme_sequence`, `shift_intervals`, `correct_interval_offset`, `total_duration` |
 | `corpus.py` | `discover_pairs`, `load_group_map`, `assign_groups` — pair audio with annotation by stem |
 | `ctc_alignment.py` | CTC primitives, the `ctc_align_audio` driver, chunkers, and per-encoder presets |
 | `whisper_ctc_model.py` | `WhisperEncoderForCTC` |
 | `alignment_matching.py` | `match_alignments_lev` |
-| `metrics_alignment.py` | Metric aggregation (unchanged) |
+| `metrics_alignment.py` | Metric aggregation, scored exactly as in the paper |
 | `export.py` | `dict_to_csv`, `write_etf`, `pkl_to_etf` |
 | `VAD_chunk.py` | WhisperX-style VAD chunking (optional dependency) |
 
@@ -41,8 +42,8 @@ from utils.phoneme_normalization import PhonemeNormalizer, clean_alignment_dict
 from utils.textgrid_io import read_phone_intervals
 
 # 1. Describe your two label conventions once.
-ref_norm = PhonemeNormalizer(mapping=MY_REF_TABLE)     # or french_ipa_normalizer("reference")
-hyp_norm = PhonemeNormalizer(mapping=MY_MODEL_TABLE)   # or french_ipa_normalizer("hypothesis")
+ref_norm = PhonemeNormalizer(mapping=MY_REF_TABLE)     # or PaperFrenchNormalizer("reference")
+hyp_norm = PhonemeNormalizer(mapping=MY_MODEL_TABLE)   # or PaperFrenchNormalizer("hypothesis")
 
 store = {}
 for file_id, wav, textgrid in corpus:

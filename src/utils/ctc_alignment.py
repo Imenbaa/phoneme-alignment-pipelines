@@ -273,10 +273,12 @@ def ctc_align_audio(
             logits = logits[:, : min(valid, logits.shape[1]), :]
 
         num_frames = logits.shape[1]
+        # Derived frame duration uses the chunk's nominal length, as in the paper.
+        # A VAD chunk can end past the audio, which stretches its frames slightly.
         frame_duration = (
             frame_stride_s
             if frame_stride_s is not None
-            else (real_samples / sample_rate) / num_frames
+            else ((end_sample - start_sample) / sample_rate) / num_frames
         )
 
         predicted_ids = torch.argmax(logits, dim=-1)[0]

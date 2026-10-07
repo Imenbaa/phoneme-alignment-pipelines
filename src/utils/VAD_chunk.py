@@ -20,18 +20,22 @@ Only load_whisperx_vad() touches whisperx, so the rest is importable/testable
 offline without it.
 """
 
+import os
+
 import numpy as np
 import torch
-from whisperx.vads.pyannote import load_vad_model
 # WhisperX defaults
 ONSET = 0.5
 OFFSET = 0.363
 
 
 def load_whisperx_vad(wav):
+    from whisperx.vads.pyannote import load_vad_model
+
     vad_pipeline = load_vad_model(
-    device="cuda",
-    token="hf_XXXXXXXXXXX")
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        token=os.environ.get("HF_TOKEN"),
+    )
     vad_scores = vad_pipeline(wav)
     scores = vad_scores.data[:, 0]
     frames = vad_scores.sliding_window

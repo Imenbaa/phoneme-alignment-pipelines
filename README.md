@@ -28,26 +28,11 @@ Each pipeline is a *transcription front-end* → *alignment back-end* pair:
 | `GoldPh->MFA` | Reference phoneme transcription (topline) | MFA |
 | `GoldW+G2P->MFA` | Reference word transcription + G2P (topline) | MFA |
 
-## Corpora
-
-Three French corpora, reported as six condition labels:
-
-| Label | Corpus / group | Style | Files | Phonemes | Task | Accent |
-|---|---|---|---|---|---|---|
-| `mon` | MonPaGe | Semi | 68 | 30,592 | Picture description | Belgian Fr. |
-| `rhap` | Rhapsodie | Spont / Planned / Semi | 38 / 11 / 4 | 46,184 / 29,234 / 14,697 | Interaction | Native Fr. |
-| `park` | Typaloc — Parkinson's disease | Read | 8 | 4,571 | Read | South / Paris |
-| `cereb` | Typaloc — cerebellar ataxia | Read | 7 | 4,642 | Read | South / Paris |
-| `sla` | Typaloc — ALS (SLA) | Read | 12 | 6,396 | Read | South / Paris |
-| `ctrl` | Typaloc — healthy controls | Read | 12 | 6,829 | Read | South / Paris |
-
-Rhapsodie is a corpus of contemporary spoken French; 53 of the original 57 recordings are
-used (4 excluded for insufficient quality). For all three corpora, annotations and
-alignments were produced automatically and then manually verified.
+## Data
 
 **No speech data, transcriptions, or alignments are included in this repository.** The
-corpora contain clinical recordings and are not redistributable; obtain them from their
-respective providers. Only aggregate metrics and figures are published here.
+evaluation corpora are not redistributable; the code takes any corpus with a reference
+phoneme segmentation (see *What the evaluation expects*).
 
 ## Repository layout
 
@@ -111,8 +96,9 @@ audio/        utt001.wav  utt002.wav  ...
 reference/    utt001.TextGrid  utt002.TextGrid  ...   (a tier of phone intervals)
 ```
 
-Stems need not match exactly -- `--ref-stem-suffix=-Pro` strips a trailing marker before
-pairing. Optionally, a CSV assigns each file a group (speaking style, speaker group,
+Stems need not match exactly -- `--ref-stem-suffix=-ref` strips a trailing marker before
+pairing. If a directory holds several annotations per recording (`utt001.TextGrid`,
+`utt001-ref.TextGrid`), the one carrying the suffix is used. Optionally, a CSV assigns each file a group (speaking style, speaker group,
 clinical condition), and metrics are then reported per group as well as globally.
 
 ### Scoring a CTC back-end
@@ -139,7 +125,14 @@ this choice, so compare systems only under the same mode.
 
 To reproduce the paper's CTC numbers, use `--chunking vad` with `--chunk-seconds 30` for
 `wav2vec2` and `wavlm`, and `--chunk-seconds 8` for `whisper`, keeping the default
-`--decoder forced_align` and `--end-mode span`.
+`--decoder forced_align` and `--end-mode span`, with `--hyp-preset french-broad` and the
+reference preset matching the annotation's label convention (see *Matching label
+conventions*).
+
+Reference tiers are selected by `--ref-tier` (exact name) or `--ref-tier-contains`
+(substring); given together with `--ref-tier-contains`, `--ref-tier-index` is the
+fallback for files where no tier name matches. Pass a suffix that starts with `-` as
+`--ref-stem-suffix=-ref`: without `=`, it is read as a flag.
 
 ### Scoring an MFA back-end
 
@@ -161,9 +154,15 @@ This path imports no torch, so MFA output can be scored without a deep-learning 
 ### Matching label conventions
 
 Reference and hypothesis rarely use the same symbols. `--ref-preset` / `--hyp-preset`
-apply a built-in mapping (`french-sampa`, `french-asr-codes`, `french-broad`), and
-`--ref-mapping` / `--hyp-mapping` take a JSON object `{"label": "phoneme"}` of your own.
-The default is `none`: no mapping is applied unless you ask for one.
+apply a built-in mapping, and `--ref-mapping` / `--hyp-mapping` take a JSON object
+`{"label": "phoneme"}` of your own. The default is `none`: no mapping is applied unless
+you ask for one. The French presets are the paper's normalisers, rule for rule:
+
+| Preset | Labels |
+|---|---|
+| `french-sampa` | SAMPA-style references |
+| `french-asr-codes` | references in two-letter ASR codes |
+| `french-broad` | a recognizer's IPA output, projected to broad IPA (hypotheses) |
 
 Every run writes `inventory_<tag>.txt` comparing the phoneme inventories actually seen on
 each side. **Read it first** -- a small shared inventory means the two sides disagree on
@@ -198,9 +197,8 @@ boundary placement (`--be-cap-ms`, 0 to keep every error). The diagnostic column
 
 ## Status and caveats
 
-- The evaluation code is corpus-agnostic, but it was written for and validated on the
-  three French corpora above. Nothing stops it running elsewhere; nothing guarantees the
-  built-in label presets fit another language.
+- The evaluation code is corpus-agnostic. The built-in label presets are French; for
+  another language or notation, pass your own mapping.
 - Boundary resolution is bounded by the encoder frame rate: one frame per 20 ms. Errors
   below that are not measurable by this protocol.
 - `--chunking vad` needs `whisperx` and a gated Hugging Face model. The default

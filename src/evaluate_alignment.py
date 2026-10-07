@@ -51,10 +51,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils import corpus, export  # noqa: E402
 from utils.intervals import correct_interval_offset, extract_phoneme_sequence  # noqa: E402
 from utils.metrics_alignment import compute_metrics  # noqa: E402
+from utils.paper_normalization import PaperFrenchNormalizer  # noqa: E402
 from utils.phoneme_normalization import (  # noqa: E402
     PhonemeNormalizer,
     clean_alignment_dict,
-    french_ipa_normalizer,
 )
 from utils.textgrid_io import read_phone_intervals  # noqa: E402
 
@@ -68,11 +68,12 @@ from utils.textgrid_io import read_phone_intervals  # noqa: E402
 #: Abort after this many consecutive failures while nothing has succeeded.
 FAIL_FAST_AFTER = 3
 
+#: The French presets are the paper's normalisers (utils.paper_normalization).
 NORMALIZER_PRESETS = {
     "none": lambda: PhonemeNormalizer(),
-    "french-sampa": lambda: french_ipa_normalizer("reference"),
-    "french-asr-codes": lambda: french_ipa_normalizer("asr_codes"),
-    "french-broad": lambda: french_ipa_normalizer("hypothesis"),
+    "french-sampa": lambda: PaperFrenchNormalizer("reference"),
+    "french-asr-codes": lambda: PaperFrenchNormalizer("asr_codes"),
+    "french-broad": lambda: PaperFrenchNormalizer("hypothesis"),
 }
 
 
@@ -83,6 +84,8 @@ def build_normalizer(preset, mapping_path=None):
         mapping = json.loads(Path(mapping_path).read_text(encoding="utf-8"))
         if not isinstance(mapping, dict):
             raise ValueError(f"{mapping_path}: expected a JSON object label -> phoneme")
+        if isinstance(normalizer, PaperFrenchNormalizer):
+            return normalizer.with_mapping(mapping)
         normalizer = PhonemeNormalizer(
             mapping=mapping,
             canonical_map=normalizer.canonical_map,
@@ -274,7 +277,9 @@ def build_parser():
     ref.add_argument("--ref-tier", default=None, help="exact tier name to read")
     ref.add_argument("--ref-tier-contains", default=None,
                      help="read the first tier whose name contains this")
-    ref.add_argument("--ref-tier-index", type=int, default=None, help="read tier by position")
+    ref.add_argument("--ref-tier-index", type=int, default=None,
+                     help="read tier by position; with --ref-tier-contains, the fallback "
+                          "when no tier name matches")
     ref.add_argument("--ref-backend", choices=("praatio", "textgrid"), default="praatio")
     ref.add_argument("--ref-preset", choices=sorted(NORMALIZER_PRESETS), default="none",
                      help="label normalisation for the reference (default: none)")

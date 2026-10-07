@@ -5,8 +5,8 @@ optionally a hypothesis TextGrid, and optionally a group label. How those files
 are named is a property of the corpus, so it is expressed here as two knobs --
 a stem suffix to strip on each side -- rather than baked into the loop.
 
-    reference/Rhap-D2004-Pro.TextGrid  --ref-stem-suffix -Pro  ->  stem "Rhap-D2004"
-    audio/Rhap-D2004.wav                                       ->  stem "Rhap-D2004"
+    reference/utt001-ref.TextGrid  --ref-stem-suffix -ref  ->  stem "utt001"
+    audio/utt001.wav                                       ->  stem "utt001"
 """
 
 import csv
@@ -34,7 +34,7 @@ class Sample:
 
 
 def strip_stem_suffix(stem, suffix=None):
-    """Drop a trailing marker from a file stem (``Rhap-D2004-Pro`` -> ``Rhap-D2004``)."""
+    """Drop a trailing marker from a file stem (``utt001-ref`` -> ``utt001``)."""
     if suffix and stem.endswith(suffix):
         return stem[: -len(suffix)]
     return stem
@@ -43,8 +43,10 @@ def strip_stem_suffix(stem, suffix=None):
 def index_by_stem(directory, extensions, stem_suffix=None, recursive=True):
     """Map ``stem -> path`` for every matching file under `directory`.
 
-    Later duplicates are ignored, so the first match for a stem wins; hidden
-    files and Jupyter checkpoint directories are skipped.
+    When `stem_suffix` is given, a file whose stem carries it wins over one that
+    does not, so ``X-ref.TextGrid`` is chosen over a sibling
+    ``X.TextGrid``. Otherwise the first match for a stem wins; hidden files and
+    Jupyter checkpoint directories are skipped.
     """
     directory = Path(directory)
     if not directory.is_dir():
@@ -53,7 +55,7 @@ def index_by_stem(directory, extensions, stem_suffix=None, recursive=True):
     extensions = tuple(e.lower() for e in extensions)
     paths = directory.rglob("*") if recursive else directory.glob("*")
 
-    index = {}
+    index, suffixed = {}, set()
     for path in sorted(paths):
         if not path.is_file() or path.name.startswith("."):
             continue
@@ -61,7 +63,12 @@ def index_by_stem(directory, extensions, stem_suffix=None, recursive=True):
             continue
         if path.suffix.lower() not in extensions:
             continue
-        index.setdefault(strip_stem_suffix(path.stem, stem_suffix), path)
+        stem = strip_stem_suffix(path.stem, stem_suffix)
+        has_suffix = bool(stem_suffix) and stem != path.stem
+        if stem not in index or (has_suffix and stem not in suffixed):
+            index[stem] = path
+            if has_suffix:
+                suffixed.add(stem)
     return index
 
 
