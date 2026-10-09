@@ -9,7 +9,7 @@ behind the boundary-error and F1 heatmaps):
     deletion, then insertion). Only pairs with identical labels contribute a
     boundary error. The backtrace order matters: two minimal alignments can pair
     different phones, so a different aligner gives slightly different numbers.
-  - PER: (S + D + I) / N_ref from that same alignment, pooled over files.
+  - PER: (S + D + I) / N_ref from jiwer, pooled over files.
   - Boundary F1: the boundary set is every phone onset plus the final offset,
     deduplicated. Each REFERENCE boundary takes the NEAREST unused hypothesis
     boundary within the tolerance (one-to-one); TP/FP/FN are pooled over files
@@ -31,6 +31,7 @@ all reported errors are in milliseconds.
 
 import numpy as np
 import pandas as pd
+from jiwer import process_words
 
 #: Boundary errors above this (ms) are dropped from AAS and MedianBE, as in the paper.
 DEFAULT_CAP_MS = 150.0
@@ -62,21 +63,6 @@ def align_sequences(ref, hyp):
         else:
             alignment.append((None, j - 1)); j -= 1
     return alignment[::-1]
-
-
-def edit_counts(ref, hyp, alignment=None):
-    """(substitutions, deletions, insertions) along the alignment."""
-    if alignment is None:
-        alignment = align_sequences(ref, hyp)
-    S = D = I = 0
-    for ref_idx, hyp_idx in alignment:
-        if hyp_idx is None:
-            D += 1
-        elif ref_idx is None:
-            I += 1
-        elif ref[ref_idx] != hyp[hyp_idx]:
-            S += 1
-    return S, D, I
 
 
 # ----------------------------------------------------------------------
@@ -225,7 +211,8 @@ def compute_metrics(alignment_store, csv_path, per_phoneme_csv=None,
             tag = f"{int(round(tol * 1000))}"
             row[f"TP_{tag}"], row[f"FP_{tag}"], row[f"FN_{tag}"] = tp, fp, fn
 
-        row["S"], row["D"], row["I"] = edit_counts(ref_seq, hyp_seq, alignment)
+        out = process_words(" ".join(ref_seq), " ".join(hyp_seq))
+        row["S"], row["D"], row["I"] = out.substitutions, out.deletions, out.insertions
         f1_rows.append(row)
 
     records_df = pd.DataFrame(all_records)
